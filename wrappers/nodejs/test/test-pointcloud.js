@@ -6,7 +6,12 @@
 
 /* global describe, it, before, after */
 const assert = require('assert');
-const rs2 = require('../index.js');
+let rs2;
+try {
+  rs2 = require('node-librealsense');
+} catch (e) {
+  rs2 = require('../index.js');
+}
 
 let ctx;
 describe('Pointcloud test', function() {
@@ -23,7 +28,7 @@ describe('Pointcloud test', function() {
   it('Testing method destroy', () => {
     let pointcloud;
     assert.doesNotThrow(() => {
-      pointcloud= new rs2.Pointcloud();
+      pointcloud= new rs2.PointCloud();
       pointcloud.destroy();
     });
     setTimeout(() => {
@@ -37,7 +42,7 @@ describe('Pointcloud test', function() {
     let pointcloud;
     assert.doesNotThrow(() => {
       pipeline = new rs2.Pipeline();
-      pointcloud = new rs2.Pointcloud();
+      pointcloud = new rs2.PointCloud();
       pipeline.start();
     });
     let endTest = false;
@@ -56,7 +61,7 @@ describe('Pointcloud test', function() {
           points = pointcloud.calculate(frameSet.depthFrame);
         });
         assert(points instanceof rs2.Points);
-        assert.doesNotThrow(() => { // jshint ignore:line
+        assert.throws(() => { // jshint ignore:line
           pointsNull = pointcloud.calculate();
         });
         assert(pointsNull === undefined);
@@ -77,7 +82,7 @@ describe('Pointcloud test', function() {
     let pointcloud;
     assert.doesNotThrow(() => {
       pipeline = new rs2.Pipeline();
-      pointcloud = new rs2.Pointcloud();
+      pointcloud = new rs2.PointCloud();
       pipeline.start();
     });
     let endTest = false;

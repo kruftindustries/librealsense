@@ -4,11 +4,27 @@
 
 'use strict';
 
-/* global describe, it, before, after */
+/* global describe, it, before, after, afterEach */
 const assert = require('assert');
-const rs2 = require('../index.js');
+const fs = require('fs');
+let rs2;
+try {
+  rs2 = require('node-librealsense');
+} catch (e) {
+  rs2 = require('../index.js');
+}
 
 describe('Pipeline tests', function() {
+  before(function() {
+    const ctx = new rs2.Context();
+    const devices = ctx.queryDevices().devices;
+    assert(devices.length > 0); // Device must be connected
+  });
+
+  after(function() {
+    rs2.cleanup();
+  });
+
   it('Default pipeline', () => {
     const pipe = new rs2.Pipeline();
     pipe.start();
@@ -192,6 +208,29 @@ describe('Colorizer test', function() {
     assert.equal(depthRGB.height, depth.height);
     assert.equal(depthRGB.width, depth.width);
     assert.equal(depthRGB.format, rs2.format.FORMAT_RGB8);
+  });
+  it('colorizer option API test', () => {
+    for (let i = rs2.option.OPTION_BACKLIGHT_COMPENSATION; i < rs2.option.OPTION_COUNT; i++) {
+      let readonly = colorizer.isOptionReadOnly(i);
+      assert.equal((readonly === undefined) || (typeof readonly === 'boolean'), true);
+      let supports = colorizer.supportsOption(i);
+      assert.equal((supports === undefined) || (typeof supports === 'boolean'), true);
+      let value = colorizer.getOption(i);
+      assert.equal((value === undefined) || (typeof value === 'number'), true);
+      let des = colorizer.getOptionDescription(i);
+      assert.equal((des === undefined) || (typeof des === 'string'), true);
+      des = colorizer.getOptionDescription(i, 1);
+      assert.equal((des === undefined) || (typeof des === 'string'), true);
+
+      if (supports && !readonly) {
+        let range = colorizer.getOptionRange(i);
+        for (let j = range.minvalue; j <= range.maxValue; j += range.step) {
+          colorizer.setOption(i, j);
+          let val = colorizer.getOption(i);
+          assert.equal(val, j);
+        }
+      }
+    }
   });
 });
 
@@ -414,9 +453,6 @@ describe('Sensor tests', function() {
   it('Notification test', () => {
     return new Promise((resolve, reject) => {
       let dev = ctx.queryDevices().devices[0];
-      setTimeout(() => {
-        dev.cxxDev.triggerErrorForTest();
-      }, 500);
       sensors[0].setNotificationsCallback((n) => {
         assert.equal(typeof n.descr, 'string');
         assert.equal(typeof n.timestamp, 'number');
@@ -424,6 +460,9 @@ describe('Sensor tests', function() {
         assert.equal(typeof n.category, 'number');
         resolve();
       });
+      setTimeout(() => {
+        dev.cxxDev.triggerErrorForTest();
+      }, 100);
     });
   });
 });
@@ -593,6 +632,7 @@ describe(('DeviceHub test'), function() {
   after(() => {
     hub.destroy();
     ctx.destroy();
+    rs2.cleanup();
   });
   it('API test', () => {
     const dev = hub.waitForDevice();
@@ -600,4 +640,116 @@ describe(('DeviceHub test'), function() {
     assert.equal(hub.isConnected(dev), true);
     dev.destroy();
   });
+});
+
+describe(('record & playback test'), function() {
+  let fileName = 'ut-record.bag';
+
+  afterEach(() => {
+    rs2.cleanup();
+  });
+
+  function startRecording(file, cnt, callback) {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        let ctx = new rs2.Context();
+        let dev = ctx.queryDevices().devices[0];
+        let recorder = new rs2.RecorderDevice(file, dev);
+        let sensors = recorder.querySensors();
+        let sensor = sensors[0];
+        let profiles = sensor.getStreamProfiles();
+        for (let i =0; i < profiles.length; i++) {
+          if (profiles[i].streamType === rs2.stream.STREAM_DEPTH &&
+              profiles[i].fps === 30 &&
+              profiles[i].width === 640 &&
+              profiles[i].height === 480 &&
+              profiles[i].format === rs2.format.FORMAT_Z16) {
+            sensor.open(profiles[i]);
+          }
+        }
+        let counter = 0;
+        sensor.start((frame) => {
+          if (callback) {
+            callback(recorder, counter);
+          }
+          counter++;
+          if (counter === cnt) {
+            recorder.reset();
+            rs2.cleanup();
+            resolve();
+          }
+        });
+      }, 2000);
+    });
+  }
+
+  function startPlayback(file, callback) {
+    return new Promise((resolve, reject) => {
+      let ctx = new rs2.Context();
+      let dev = ctx.loadDevice(file);
+      let sensors = dev.querySensors();
+      let sensor = sensors[0];
+      let profiles = sensor.getStreamProfiles();
+      let cnt = 0;
+
+      dev.setStatusChangedCallback((status) => {
+        callback(dev, status, cnt);
+        if (status.description === 'stopped') {
+          console.log('stopped');
+          dev.stop();
+          ctx.unloadDevice(file);
+          rs2.cleanup();
+          resolve();
+        }
+      });
+      sensor.open(profiles);
+      sensor.start((frame) => {
+        cnt++;
+      });
+    });
+  }
+
+  it('record test', () => {
+    return new Promise((resolve, reject) => {
+      startRecording(fileName, 1, null).then(() => {
+        assert.equal(fs.existsSync(fileName), true);
+        fs.unlinkSync(fileName);
+        resolve();
+      });
+    });
+  }).timeout(5000);
+
+  it('pause/resume test', () => {
+    return new Promise((resolve, reject) => {
+      startRecording(fileName, 2, (recorder, cnt) => {
+        if (cnt === 1) {
+          recorder.pause();
+          recorder.resume();
+        }
+      }).then(() => {
+        assert.equal(fs.existsSync(fileName), true);
+        fs.unlinkSync(fileName);
+        resolve();
+      });
+    });
+  }).timeout(5000);
+
+  it('playback test', () => {
+    return new Promise((resolve, reject) => {
+      startRecording(fileName, 1, null).then(() => {
+        assert.equal(fs.existsSync(fileName), true);
+        return startPlayback(fileName, (playbackDev, status) => {
+          if (status.description === 'stopped') {
+            resolve();
+          } else if (status.description === 'playing') {
+            assert.equal(playbackDev.fileName, 'ut-record.bag');
+            assert.equal(typeof playbackDev.duration, 'number');
+            assert.equal(typeof playbackDev.position, 'number');
+            assert.equal(typeof playbackDev.isRealTime, 'boolean');
+            assert.equal(playbackDev.currentStatus.description, 'playing');
+          }
+        });
+      });
+    });
+  }).timeout(5000);
 });

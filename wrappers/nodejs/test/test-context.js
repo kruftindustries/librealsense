@@ -4,12 +4,26 @@
 
 'use strict';
 
-/* global describe, it */
+/* global describe, it, before, after */
 const assert = require('assert');
 const EventEmitter = require('events');
-const librealsense2 = require('../index.js');
+let librealsense2;
+try {
+  librealsense2 = require('node-librealsense');
+} catch (e) {
+  librealsense2 = require('../index.js');
+}
 
 describe('Context test', function() {
+  before(function() {
+    const ctx = new librealsense2.Context();
+    const devices = ctx.queryDevices().devices;
+    assert(devices.length > 0); // Device must be connected
+  });
+
+  after(function() {
+    librealsense2.cleanup();
+  });
   it('testing constructor', () => {
     assert.doesNotThrow(() => {
       new librealsense2.Context();
@@ -29,20 +43,18 @@ describe('Context test', function() {
     assert(context._events instanceof EventEmitter);
   });
 
-  it('testing constructor - new Pointcloud, should get Pointcloud', () => {
-    let pointcloud;
+  it('testing constructor - new Context, should get Context', () => {
+    let context;
     assert.doesNotThrow(() => {
-      pointcloud = new librealsense2.Pointcloud();
+      context = new librealsense2.Context();
     });
-    assert(pointcloud instanceof librealsense2.Pointcloud);
+    assert(context instanceof librealsense2.Context);
   });
 
-  it('testing constructor - new Pointcloud, invalid 1 option', () => {
-    let pointcloud;
-    assert.doesNotThrow(() => {
-      pointcloud = new librealsense2.Pointcloud(1);
+  it('testing constructor - new Context, invalid 1 option', () => {
+    assert.throws(() => {
+      new librealsense2.Context(1);
     });
-    assert(pointcloud instanceof librealsense2.Pointcloud);
   });
 
   it('testing method - destroy, call 1 time', () => {
@@ -57,7 +69,7 @@ describe('Context test', function() {
   });
 
   it('testing method - destroy, call 2 times', () => {
-    assert.throws(() => {
+    assert.doesNotThrow(() => {
       const context = new librealsense2.Context();
       context.destroy();
       context.destroy();

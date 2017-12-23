@@ -6,7 +6,12 @@
 
 /* global describe, it, before, after */
 const assert = require('assert');
-const rs2 = require('../index.js');
+let rs2;
+try {
+  rs2 = require('node-librealsense');
+} catch (e) {
+  rs2 = require('../index.js');
+}
 
 let ctx;
 let dev;
@@ -60,9 +65,34 @@ describe('Pipeline test', function() {
       pipeline.start();
       pipeline.destroy();
     });
-    setTimeout(() => {
-      assert.equal(pipeline, undefined);
-    }, 100);
+  });
+
+
+  it('Testing method waitForFrames', () => {
+    let pipeline;
+    let frameSet;
+    assert.doesNotThrow(() => {
+      pipeline = new rs2.Pipeline();
+      pipeline.start();
+      frameSet = pipeline.waitForFrames();
+    });
+    let endTest = false;
+    let n = 0;
+    while (!endTest) {
+      frameSet = pipeline.waitForFrames();
+      n++;
+      console.log(`retring left ...${10 - n} times`);
+      if (frameSet !== undefined && frameSet.colorFrame !== undefined &&
+        frameSet.depthFrame !== undefined) {
+        assert(frameSet.depthFrame instanceof rs2.VideoFrame);
+        assert(frameSet.colorFrame instanceof rs2.VideoFrame);
+        endTest = true;
+      }
+      if (n >= 10) {
+        assert(false, 'could not get colorFrame or depthFrame, try to reset camera');
+      }
+    }
+    pipeline.destroy();
   });
 
   it('Testing method start', () => {
@@ -81,42 +111,11 @@ describe('Pipeline test', function() {
   it('Testing method stop', () => {
     let pipeline;
     pipeline = new rs2.Pipeline();
-    pipeline.start();
     assert.notEqual(pipeline, undefined);
     assert.doesNotThrow(() => {
       pipeline.start();
       pipeline.stop();
       pipeline.destroy();
-    });
-  });
-
-  it('Testing method waitForFrames', () => {
-    let pipeline;
-    let frameSet;
-    assert.doesNotThrow(() => {
-      pipeline = new rs2.Pipeline();
-      pipeline.start();
-      frameSet = pipeline.waitForFrames();
-      frameSet.destroy();
-    });
-    let endTest = false;
-    let n = 0;
-    while (!endTest) {
-      frameSet = pipeline.waitForFrames();
-      n++;
-      console.log(`retring left ...${10 - n} times`);
-      if (frameSet !== undefined && frameSet.colorFrame !== undefined &&
-        frameSet.depthFrame !== undefined) {
-        assert(frameSet.depthFrame instanceof rs2.VideoFrame);
-        assert(frameSet.colorFrame instanceof rs2.VideoFrame);
-        endTest = true;
-      }
-      // always destroy it
-      frameSet.destroy();
-      if (n >= 10) {
-        assert(false, 'could not get colorFrame or depthFrame, try to reset camera');
-      }
-    }
-    pipeline.destroy();
+   });
   });
 });

@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include <string>
 #include <functional>
+#include <thread>
 #include "rendering.h"
 
 namespace rs2
@@ -61,6 +62,8 @@ namespace rs2
         void add_on_load_message(const std::string& msg);
 
     private:
+        void open_window();
+
         GLFWwindow               *_win;
         int                      _width, _height, _output_height;
         int                     _fb_width, _fb_height;
@@ -71,8 +74,10 @@ namespace rs2
         std::string              _error_message;
         float                    _scale_factor;
 
+        std::thread              _first_load;
         bool                     _first_frame;
         std::atomic<bool>        _app_ready;
+        std::atomic<bool>        _keep_alive;
         texture_buffer           _splash_tex;
         timer                    _splash_timer;
         std::string              _title_str;
@@ -83,5 +88,8 @@ namespace rs2
         bool                     _missing_device = false;
         int                      _hourglass_index = 0;
         std::string              _dev_stat_message;
+        bool                     _fullscreen_pressed = false;
+        bool                     _fullscreen = false;
+        std::string              _title;
     };
 }
